@@ -146,7 +146,7 @@ function FeeInfoInputForTransfer({
   }, [encodedTx, feeInfoPayload, isPreset]);
 
   const subTitle = useMemo(() => {
-    if (!isPreset) {
+    if (!isPreset || !encodedTx || !feeInfoPayload) {
       return null;
     }
     let feeSpeedTime = '';
@@ -170,12 +170,7 @@ function FeeInfoInputForTransfer({
         {feeSpeedTime}
       </Text>
     );
-  }, [
-    feeInfoPayload?.selected?.preset,
-    feeInfoPayload?.selected?.type,
-    intl,
-    isPreset,
-  ]);
+  }, [encodedTx, feeInfoPayload, intl, isPreset]);
 
   const loadingView = useMemo(
     () => (
@@ -198,11 +193,11 @@ function FeeInfoInputForTransfer({
         </Text>
       );
     }
-    if (!title) {
+    if (!title && !subTitle) {
       return loadingView;
     }
     return null;
-  }, [feeInfoPayload, intl, loadingView, title]);
+  }, [feeInfoPayload, intl, loadingView, title, subTitle]);
 
   const renderChildren = useCallback(
     ({ isHovered }) => (

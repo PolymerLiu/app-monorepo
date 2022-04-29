@@ -7,7 +7,8 @@ import {
   useNavigation,
   useRoute,
 } from '@react-navigation/native';
-import { first, last } from 'lodash';
+import BigNumber from 'bignumber.js';
+import { cloneDeep, first, last } from 'lodash';
 import { Column, Row } from 'native-base';
 import { Control, UseFormGetValues, UseFormWatch } from 'react-hook-form';
 import { useIntl } from 'react-intl';
@@ -40,6 +41,7 @@ import {
   IFeeInfoSelectedType,
   IFeeInfoUnit,
 } from '@onekeyhq/engine/src/types/vault';
+import { IEncodedTxEvm } from '@onekeyhq/engine/src/vaults/impl/evm/Vault';
 import backgroundApiProxy from '@onekeyhq/kit/src/background/instance/backgroundApiProxy';
 import debugLogger from '@onekeyhq/shared/src/logger/debugLogger';
 
@@ -47,6 +49,7 @@ import { FormatCurrencyNative } from '../../components/Format';
 import { useDebounce } from '../../hooks';
 import { useActiveWalletAccount } from '../../hooks/redux';
 
+import { DecodeTxButtonTest } from './DecodeTxButtonTest';
 import { SendRoutes, SendRoutesParams } from './types';
 import {
   calculateTotalFeeNative,
@@ -75,6 +78,27 @@ type NavigationProps = NativeStackNavigationProp<
   SendRoutesParams,
   SendRoutes.SendEditFee
 >;
+
+function selectMaxValue(
+  currentValue: string | undefined,
+  highPresetValue: string | undefined,
+  times = 1,
+) {
+  const currentValueBN = new BigNumber(currentValue ?? '').times(times);
+  const highPresetValueBN = new BigNumber(highPresetValue ?? '');
+  if (highPresetValueBN.isNaN() && currentValueBN.isNaN()) {
+    return '0';
+  }
+  if (highPresetValueBN.isNaN()) {
+    return currentValueBN.toFixed();
+  }
+  if (currentValueBN.isNaN()) {
+    return highPresetValueBN.toFixed();
+  }
+  return currentValueBN.isGreaterThan(highPresetValueBN)
+    ? currentValueBN.toFixed()
+    : highPresetValueBN.toFixed();
+}
 
 export function FeeSpeedLabel({ index }: { index: number | string }) {
   const intl = useIntl();
@@ -136,6 +160,8 @@ export type ICustomFeeFormProps = {
 function CustomFeeForm(props: ICustomFeeFormProps) {
   const { feeInfoPayload, control, watch, getValues } = props;
   const intl = useIntl();
+  const selectedFeeInfo = feeInfoPayload?.selected;
+
   const feeSymbol = feeInfoPayload?.info?.symbol || '';
   const isEIP1559Fee = feeInfoPayload?.info?.eip1559;
   const lastPresetFeeInfo = last(feeInfoPayload?.info?.prices ?? []);
@@ -215,6 +241,7 @@ function CustomFeeForm(props: ICustomFeeFormProps) {
             validate: async (value) => {
               const lowFee = fistPresetFeeInfo as EIP1559Fee;
               const highFee = lastPresetFeeInfo as EIP1559Fee;
+
               // getValues
               try {
                 await backgroundApiProxy.validator.validateMaxPriortyFee(
@@ -222,6 +249,8 @@ function CustomFeeForm(props: ICustomFeeFormProps) {
                   value,
                   lowFee?.maxPriorityFeePerGas,
                   highFee?.maxPriorityFeePerGas,
+                  (selectedFeeInfo?.custom?.price as EIP1559Fee | undefined)
+                    ?.maxPriorityFeePerGas,
                 );
                 setMaxPriorityFeeTip(undefined);
               } catch (error) {
@@ -283,6 +312,8 @@ function CustomFeeForm(props: ICustomFeeFormProps) {
                   getValues('maxPriorityFeePerGas'),
                   lowFee?.maxFeePerGas,
                   highFee?.maxFeePerGas,
+                  (selectedFeeInfo?.custom?.price as EIP1559Fee | undefined)
+                    ?.maxFeePerGas,
                 );
                 setMaxFeeTip(undefined);
               } catch (error) {
@@ -530,9 +561,20 @@ function ScreenSendEditFee({ ...rest }) {
   const navigation = useNavigation<NavigationProps>();
   const route = useRoute<RouteProps>();
   const { encodedTx, autoConfirmAfterFeeSaved } = route.params;
+  const encodedTxForFeeInfo = useMemo(() => {
+    if (autoConfirmAfterFeeSaved) {
+      const tx = cloneDeep(encodedTx) as IEncodedTxEvm;
+      // delete origin tx limit when speedUp or cancel,
+      //      force rpc api to re-calculate latest limit
+      delete tx.gasLimit;
+      delete tx.gas;
+      return tx;
+    }
+    return encodedTx as IEncodedTxEvm;
+  }, [autoConfirmAfterFeeSaved, encodedTx]);
   const { feeInfoPayload, feeInfoLoading, getSelectedFeeInfoUnit } =
     useFeeInfoPayload({
-      encodedTx,
+      encodedTx: encodedTxForFeeInfo,
       fetchAnyway: true,
     });
   const isEIP1559Fee = feeInfoPayload?.info?.eip1559;
@@ -656,13 +698,50 @@ function ScreenSendEditFee({ ...rest }) {
       setRadioValue(presetValue);
       setFeeType(FeeType.standard);
     } else if (type === 'custom') {
-      const customValues = selected?.custom ?? {};
+      const customValues = cloneDeep(selected?.custom ?? {});
       setFeeType(FeeType.advanced);
       if (customValues) {
+        if (autoConfirmAfterFeeSaved) {
+          const highPriceData = last(feeInfoPayload?.info?.prices ?? []);
+          customValues.limit = selectMaxValue(
+            customValues.limit,
+            feeInfoPayload?.info?.limit,
+            1,
+          );
+          if (customValues?.eip1559) {
+            const eip1559Price = customValues.price as EIP1559Fee;
+            if (eip1559Price) {
+              const highPriceInfo = highPriceData as EIP1559Fee | undefined;
+              eip1559Price.baseFee = selectMaxValue(
+                eip1559Price.baseFee,
+                highPriceInfo?.baseFee,
+                1.1,
+              );
+              eip1559Price.maxFeePerGas = selectMaxValue(
+                eip1559Price.maxFeePerGas,
+                highPriceInfo?.maxFeePerGas,
+                1.1,
+              );
+              eip1559Price.maxPriorityFeePerGas = selectMaxValue(
+                eip1559Price.maxPriorityFeePerGas,
+                highPriceInfo?.maxPriorityFeePerGas,
+                1.1,
+              );
+            }
+          } else {
+            const highPriceInfo = highPriceData as string;
+            customValues.price = selectMaxValue(
+              customValues.price as string,
+              highPriceInfo,
+              1.1,
+            );
+          }
+        }
         setFormValuesFromFeeInfo(customValues);
       }
     }
   }, [
+    autoConfirmAfterFeeSaved,
     feeInfoPayload,
     feeInfoPayload?.selected,
     feeInfoPayload?.selected.type,
@@ -748,7 +827,12 @@ function ScreenSendEditFee({ ...rest }) {
       header={intl.formatMessage({ id: 'action__edit_fee' })}
       footer={footer}
       scrollViewProps={{
-        children: content,
+        children: (
+          <>
+            {content}
+            <DecodeTxButtonTest encodedTx={encodedTx} />
+          </>
+        ),
       }}
     />
   );

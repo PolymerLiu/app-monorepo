@@ -241,12 +241,17 @@ class Validators {
     maxPriorityFee: string | BigNumber,
     lowMaxFee?: string,
     highMaxFee?: string,
+    minValue?: string,
   ): Promise<void> {
     try {
       const v = typeof maxFee === 'string' ? new BigNumber(maxFee) : maxFee;
       // TODO  may relate to network
-      if (!v || v.isNaN() || v.isLessThanOrEqualTo(0)) {
-        throw new OneKeyValidatorError('form__max_fee_invalid_too_low');
+      const minAmount = minValue || '0';
+      if (!v || v.isNaN() || v.isLessThanOrEqualTo(minAmount)) {
+        // TODO $i18n$ params
+        throw new OneKeyValidatorError('form__max_fee_invalid_too_low', {
+          0: minAmount,
+        });
       }
       const pv =
         typeof maxPriorityFee === 'string'
@@ -285,6 +290,7 @@ class Validators {
     maxPriorityFee: string | BigNumber,
     lowMaxPriorityFee?: string,
     highMaxPriorityFee?: string,
+    minValue?: string,
   ): Promise<void> {
     try {
       const v =
@@ -292,8 +298,12 @@ class Validators {
           ? new BigNumber(maxPriorityFee)
           : maxPriorityFee;
       // TODO  may relate to network
-      if (!v || v.isNaN() || v.isLessThanOrEqualTo(0)) {
-        throw new OneKeyValidatorError('form__max_priority_fee_invalid_min');
+      const minAmount = minValue || '0';
+      if (!v || v.isNaN() || v.isLessThanOrEqualTo(minAmount)) {
+        // TODO $i18n$ params
+        throw new OneKeyValidatorError('form__max_priority_fee_invalid_min', {
+          0: minAmount,
+        });
       }
       if (lowMaxPriorityFee) {
         if (v.isLessThan(new BigNumber(lowMaxPriorityFee))) {

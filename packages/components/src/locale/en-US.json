@@ -377,7 +377,7 @@
   "form__max_fee_invalid_min": "Max fee cannot be lower than max priority fee.",
   "form__max_fee_invalid_too_low": "Max fee too low for network conditions.",
   "form__max_fee_invalid_too_much": "Max fee is higher than necessary.",
-  "form__max_priority_fee_invalid_min": "Max priority fee must be greater than 0 Gwei.",
+  "form__max_priority_fee_invalid_min": "Max priority fee must be greater than {0} Gwei.",
   "form__max_priority_fee_invalid_too_low": "Max priority fee is low for current network conditions.",
   "form__max_priority_fee_invalid_too_much": "Max priority fee is higher than necessary. You may pay more than needed.",
   "form__max_priority_str": "Max Priority: {0}",
