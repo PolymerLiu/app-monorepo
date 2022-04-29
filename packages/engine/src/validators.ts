@@ -234,6 +234,8 @@ class Validators {
     return Promise.resolve();
   }
 
+  // TODO validateGasPrice
+
   @backgroundMethod()
   async validateMaxFee(
     networkId: string,
